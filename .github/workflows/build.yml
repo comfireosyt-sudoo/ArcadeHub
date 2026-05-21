@@ -11,38 +11,44 @@ jobs:
       - name: Install ARM GCC
         run: sudo apt-get update -q && sudo apt-get install -y gcc-arm-none-eabi binutils-arm-none-eabi
 
-      - name: Install Node + nwlink (NumWorks SDK downloader)
-        run: |
-          node --version
-          npm install -g nwlink@0.0.16
-
       - name: Clone sample app
         run: git clone --depth 1 https://github.com/numworks/epsilon-sample-app-cpp.git sample
 
-      - name: Build sample app (this downloads the SDK automatically)
+      - name: Install nwlink (downloads the actual SDK headers)
+        run: cd sample && npm install
+
+      - name: Show SDK files after npm install
+        run: |
+          echo "=== node_modules nwlink contents ==="
+          find sample/node_modules -name "eadk.h" 2>/dev/null || echo "not found in node_modules"
+          find sample/node_modules -name "*.ld"   2>/dev/null || echo "no .ld found"
+          find sample/node_modules -name "*.a"    2>/dev/null || echo "no .a found"
+          echo "=== sample/ top level ==="
+          ls sample/
+
+      - name: Build sample app to trigger SDK download
         run: cd sample && make
 
-      - name: Show all SDK files generated
+      - name: Show all SDK files after build
         run: |
-          echo "=== All files in sample/ ==="
-          find sample -type f | sort
+          echo "=== eadk.h ==="
+          find sample -name "eadk.h" | sort
           echo "=== .ld files ==="
           find sample -name "*.ld" | sort
           echo "=== .a files ==="
           find sample -name "*.a" | sort
-          echo "=== eadk.h location ==="
-          find sample -name "eadk.h" | sort
 
       - name: Build ArcadeHub
         run: |
-          LD_SCRIPT=$(find sample -name "*.ld" | head -1)
-          EADK_ARCH=$(find sample -name "*.a"  | head -1)
-          EADK_H=$(find sample -name "eadk.h"  | head -1)
+          EADK_H=$(find sample -name "eadk.h" | head -1)
+          LD_SCRIPT=$(find sample -name "*.ld"  | head -1)
+          EADK_ARCH=$(find sample -name "*.a"   | head -1)
           EADK_INC=$(dirname "$EADK_H")
 
+          echo "eadk.h    : $EADK_H"
           echo "LD script : $LD_SCRIPT"
-          echo "EADK arch : $EADK_ARCH"
-          echo "EADK inc  : $EADK_INC"
+          echo "Archive   : $EADK_ARCH"
+          echo "Include   : $EADK_INC"
 
           CXX=arm-none-eabi-g++
           OC=arm-none-eabi-objcopy
