@@ -7,35 +7,74 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - name: Install ARM GCC
         run: sudo apt-get update -q && sudo apt-get install -y gcc-arm-none-eabi binutils-arm-none-eabi
-      - name: Clone NumWorks SDK
+
+      - name: Install Node + nwlink (NumWorks SDK downloader)
+        run: |
+          node --version
+          npm install -g nwlink@0.0.16
+
+      - name: Clone sample app
         run: git clone --depth 1 https://github.com/numworks/epsilon-sample-app-cpp.git sample
-      - name: Show SDK structure
-        run: ls sample/ && cat sample/Makefile
+
+      - name: Build sample app (this downloads the SDK automatically)
+        run: cd sample && make
+
+      - name: Show all SDK files generated
+        run: |
+          echo "=== All files in sample/ ==="
+          find sample -type f | sort
+          echo "=== .ld files ==="
+          find sample -name "*.ld" | sort
+          echo "=== .a files ==="
+          find sample -name "*.a" | sort
+          echo "=== eadk.h location ==="
+          find sample -name "eadk.h" | sort
+
       - name: Build ArcadeHub
         run: |
           LD_SCRIPT=$(find sample -name "*.ld" | head -1)
-          EADK_ARCH=$(find sample -name "*.a" | head -1)
-          EADK_INC=$(dirname $(find sample -name "eadk.h" | head -1))
-          echo "LD=$LD_SCRIPT  ARCH=$EADK_ARCH  INC=$EADK_INC"
+          EADK_ARCH=$(find sample -name "*.a"  | head -1)
+          EADK_H=$(find sample -name "eadk.h"  | head -1)
+          EADK_INC=$(dirname "$EADK_H")
+
+          echo "LD script : $LD_SCRIPT"
+          echo "EADK arch : $EADK_ARCH"
+          echo "EADK inc  : $EADK_INC"
+
           CXX=arm-none-eabi-g++
           OC=arm-none-eabi-objcopy
+
           CPPFLAGS="-I${EADK_INC} -Isrc"
           CXXFLAGS="-std=c++17 -O2 -mcpu=cortex-m7 -mthumb -mfpu=fpv5-d16 -mfloat-abi=hard -ffunction-sections -fdata-sections -fno-exceptions -fno-rtti -nostdinc++"
+
           mkdir -p output/src
+
           SRCS="src/main.cpp src/save.cpp src/menu.cpp src/tetris.cpp src/sudoku.cpp src/watersort.cpp src/memory.cpp src/blockblast.cpp src/fruitmerge.cpp src/hangman.cpp src/checkers.cpp src/snake.cpp src/game2048.cpp src/minesweeper.cpp"
+
           OBJS=""
           for f in $SRCS; do
             OBJ="output/${f%.cpp}.o"
-            mkdir -p $(dirname $OBJ)
-            echo "CXX $f"
-            $CXX $CPPFLAGS $CXXFLAGS -c $f -o $OBJ
+            mkdir -p $(dirname "$OBJ")
+            echo "  CXX $f"
+            $CXX $CPPFLAGS $CXXFLAGS -c "$f" -o "$OBJ"
             OBJS="$OBJS $OBJ"
           done
-          arm-none-eabi-gcc $OBJS -Wl,--gc-sections -Wl,-T,${LD_SCRIPT} ${EADK_ARCH} -lm -o output/arcade_hub.elf
+
+          echo "Linking..."
+          arm-none-eabi-gcc $OBJS \
+            -Wl,--gc-sections \
+            -Wl,-T,"${LD_SCRIPT}" \
+            "${EADK_ARCH}" \
+            -lm \
+            -o output/arcade_hub.elf
+
+          echo "Generating .nwa..."
           $OC -O binary output/arcade_hub.elf output/ArcadeHub.nwa
           ls -lh output/ArcadeHub.nwa
+
       - uses: actions/upload-artifact@v4
         with:
           name: ArcadeHub
